@@ -81,6 +81,10 @@ function setupRemoteSync() {
         logDebug('local sync error:', err);
       });
     });
+
+    let anonimousDbName = 'anon';
+    var remoteAnonimousURL = self.location.protocol + '//' + self.location.host + '/db/' + anonimousDbName;
+    PouchDB.replicate(remoteAnonimousURL, anonimousDbName);
   }
 }
 

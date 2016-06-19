@@ -3,22 +3,40 @@ import Ember from 'ember';
 import createPouchViews from 'hospitalrun/utils/pouch-views';
 import PouchAdapterUtils from 'hospitalrun/mixins/pouch-adapter-utils';
 
+const { computed } = Ember;
+
 export default Ember.Service.extend(PouchAdapterUtils, {
   config: Ember.inject.service(),
-  mainDB: null, // Server DB
+  userRole: computed.readOnly('config.sessionData.authenticated.role'),
+  mainDB: computed('userRole', function() {
+    let userRole = this.get('userRole');
+    if (userRole === 'researcher') {
+      return this.get('anonDB');
+    }
+    return this.get('mainDBDefault');
+  }),
+  mainDBDefault: null, // Server DB
+  anonDB: null, // Anonimized database
   oauthHeaders: null,
   setMainDB: false,
 
   setup(configs) {
     PouchDB.plugin(List);
+    this.createDBWithName('anon', 'anon', configs).then((db) => {
+      this.set('anonDB', db);
+    });
     return this.createDB(configs)
       .then((db) => {
-        this.set('mainDB', db);
+        this.set('mainDBDefault', db);
         this.set('setMainDB', true);
       });
   },
 
   createDB(configs) {
+    return this.createDBWithName('localMainDB', 'main', configs);
+  },
+
+  createDBWithName(localDBName, remoteDBName, configs) {
     return new Ember.RSVP.Promise((resolve, reject) => {
       let pouchOptions = {};
       if (configs && configs.config_use_google_auth) {
@@ -42,14 +60,14 @@ export default Ember.Service.extend(PouchAdapterUtils, {
           pouchOptions.ajax.headers = headers;
         }
       }
-      const url = `${document.location.protocol}//${document.location.host}/db/main`;
+      const url = `${document.location.protocol}//${document.location.host}/db/${remoteDBName}`;
 
       this._createRemoteDB(url, pouchOptions)
       .catch((err) => {
         if ((err.status && err.status === 401) || configs.config_disable_offline_sync === true) {
           reject(err);
         } else {
-          return this._createLocalDB('localMainDB', pouchOptions);
+          return this._createLocalDB(localDBName, pouchOptions);
         }
       }).then((db) => resolve(db))
       .catch((err) => reject(err));
